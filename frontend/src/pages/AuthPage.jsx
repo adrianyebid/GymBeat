@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { validateAuthForm } from "../utils/validators";
+import logoImage from "../../assets/logo.png";
 
 const LOGIN_INITIAL = {
   email: "",
@@ -22,6 +23,7 @@ function AuthPage() {
   const [apiError, setApiError] = useState("");
   const [apiDetails, setApiDetails] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
@@ -31,6 +33,7 @@ function AuthPage() {
     setFormErrors({});
     setApiError("");
     setApiDetails([]);
+    setShowPassword(false);
   }
 
   function updateField(event) {
@@ -68,82 +71,189 @@ function AuthPage() {
 
   return (
     <main className="auth-layout">
-      <section className="brand-panel">
-        <p className="brand-pill">GymBeat</p>
-        <h1>Tu entrenamiento tiene ritmo propio.</h1>
-        <p className="brand-copy">
-          Recomendaciones de musica segun tu tipo de entrenamiento y tu frecuencia cardiaca.
-        </p>
+      <section className="brand-section">
+        <div className="fitbeat-logo">
+          <img src={logoImage} alt="FitBeat Logo" className="fitbeat-logo-img" />
+        </div>
+        
+        <h1>FitBeat</h1>
+        <p>Entrena con ritmo. Supera tus límites.</p>
       </section>
 
       <section className="form-panel">
-        <div className="form-tabs">
-          <button
-            type="button"
-            className={mode === "login" ? "tab active" : "tab"}
-            onClick={() => switchMode("login")}
-          >
-            Iniciar sesion
-          </button>
-          <button
-            type="button"
-            className={mode === "register" ? "tab active" : "tab"}
-            onClick={() => switchMode("register")}
-          >
-            Crear cuenta
-          </button>
-        </div>
+        {mode === "login" ? (
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+            <label htmlFor="email-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-user"></i>
+                <input
+                  id="email-field"
+                  name="email"
+                  type="email"
+                  placeholder="Usuario"
+                  value={form.email}
+                  onChange={updateField}
+                />
+              </div>
+              {formErrors.email ? <small>{formErrors.email}</small> : null}
+            </label>
 
-        <form className="auth-form" onSubmit={handleSubmit} noValidate>
-          {mode === "register" && (
-            <>
-              <label>
-                Nombre
-                <input name="firstName" value={form.firstName} onChange={updateField} />
-                {formErrors.firstName ? <small>{formErrors.firstName}</small> : null}
-              </label>
+            <label htmlFor="password-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-lock"></i>
+                <input
+                  id="password-field"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Contraseña"
+                  value={form.password}
+                  onChange={updateField}
+                />
+                <button
+                  type="button"
+                  className="toggle-password"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex="-1"
+                >
+                  <i className={`fas fa-${showPassword ? "eye-slash" : "eye"}`}></i>
+                </button>
+              </div>
+              {formErrors.password ? <small>{formErrors.password}</small> : null}
+            </label>
 
-              <label>
-                Apellido
-                <input name="lastName" value={form.lastName} onChange={updateField} />
-                {formErrors.lastName ? <small>{formErrors.lastName}</small> : null}
-              </label>
-            </>
-          )}
+            {apiError ? (
+              <div className="api-error" role="alert">
+                <p>{apiError}</p>
+                {apiDetails.length > 0 ? (
+                  <ul>
+                    {apiDetails.map((detail) => (
+                      <li key={detail}>{detail}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
 
-          <label>
-            Email
-            <input name="email" type="email" value={form.email} onChange={updateField} />
-            {formErrors.email ? <small>{formErrors.email}</small> : null}
-          </label>
-
-          <label>
-            Contrasena
-            <input name="password" type="password" value={form.password} onChange={updateField} />
-            {formErrors.password ? <small>{formErrors.password}</small> : null}
-          </label>
-
-          {apiError ? (
-            <div className="api-error" role="alert">
-              <p>{apiError}</p>
-              {apiDetails.length > 0 ? (
-                <ul>
-                  {apiDetails.map((detail) => (
-                    <li key={detail}>{detail}</li>
-                  ))}
-                </ul>
-              ) : null}
+            <div className="form-helpers">
+              <a href="#" className="forgot-password">
+                ¿Olvidaste tu contraseña?
+              </a>
             </div>
-          ) : null}
 
-          <button type="submit" className="primary-btn" disabled={isSubmitting}>
-            {isSubmitting
-              ? "Procesando..."
-              : mode === "login"
-                ? "Entrar a mi cuenta"
-                : "Crear cuenta"}
-          </button>
-        </form>
+            <button type="submit" className="primary-btn" disabled={isSubmitting}>
+              {isSubmitting ? "Procesando..." : "Iniciar Sesión"}
+            </button>
+
+            <div className="form-helpers">
+              <div className="signup-prompt">
+                No tienes una cuenta?{" "}
+                <a href="#" className="signup-link" onClick={(e) => {
+                  e.preventDefault();
+                  switchMode("register");
+                }}>
+                  Regístrate
+                </a>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+            <label htmlFor="firstname-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-user"></i>
+                <input
+                  id="firstname-field"
+                  name="firstName"
+                  type="text"
+                  placeholder="Nombre"
+                  value={form.firstName}
+                  onChange={updateField}
+                />
+              </div>
+              {formErrors.firstName ? <small>{formErrors.firstName}</small> : null}
+            </label>
+
+            <label htmlFor="lastname-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-user"></i>
+                <input
+                  id="lastname-field"
+                  name="lastName"
+                  type="text"
+                  placeholder="Apellido"
+                  value={form.lastName}
+                  onChange={updateField}
+                />
+              </div>
+              {formErrors.lastName ? <small>{formErrors.lastName}</small> : null}
+            </label>
+
+            <label htmlFor="reg-email-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-envelope"></i>
+                <input
+                  id="reg-email-field"
+                  name="email"
+                  type="email"
+                  placeholder="Email"
+                  value={form.email}
+                  onChange={updateField}
+                />
+              </div>
+              {formErrors.email ? <small>{formErrors.email}</small> : null}
+            </label>
+
+            <label htmlFor="reg-password-field">
+              <div className="form-field-wrapper">
+                <i className="form-icon fas fa-lock"></i>
+                <input
+                  id="reg-password-field"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Contraseña"
+                  value={form.password}
+                  onChange={updateField}
+                />
+                <button
+                  type="button"
+                  className="toggle-password"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex="-1"
+                >
+                  <i className={`fas fa-${showPassword ? "eye-slash" : "eye"}`}></i>
+                </button>
+              </div>
+              {formErrors.password ? <small>{formErrors.password}</small> : null}
+            </label>
+
+            {apiError ? (
+              <div className="api-error" role="alert">
+                <p>{apiError}</p>
+                {apiDetails.length > 0 ? (
+                  <ul>
+                    {apiDetails.map((detail) => (
+                      <li key={detail}>{detail}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <button type="submit" className="primary-btn" disabled={isSubmitting}>
+              {isSubmitting ? "Procesando..." : "Crear Cuenta"}
+            </button>
+
+            <div className="signup-prompt">
+              ¿Ya tienes una cuenta?{" "}
+              <a href="#" className="signup-link" onClick={(e) => {
+                e.preventDefault();
+                switchMode("login");
+              }}>
+                Iniciar Sesión
+              </a>
+            </div>
+          </form>
+        )}
       </section>
     </main>
   );
