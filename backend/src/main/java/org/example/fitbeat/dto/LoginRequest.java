@@ -1,4 +1,4 @@
-package org.example.gymtrack.dto;
+package org.example.fitbeat.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

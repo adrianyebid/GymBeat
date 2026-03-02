@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>org.example</groupId>
-    <artifactId>gymtrack</artifactId>
+    <artifactId>fitbeat</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <name>gymtrack</name>
+    <name>fitbeat</name>
     <description>Gym authentication API</description>
 
     <properties>

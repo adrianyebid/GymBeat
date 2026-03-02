@@ -1,6 +1,6 @@
-package org.example.gymtrack.repository;
+package org.example.fitbeat.repository;
 
-import org.example.gymtrack.entity.User;
+import org.example.fitbeat.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

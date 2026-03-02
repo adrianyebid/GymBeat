@@ -1,4 +1,4 @@
-package org.example.gymtrack.entity;
+package org.example.fitbeat.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

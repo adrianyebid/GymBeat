@@ -1,4 +1,4 @@
-package org.example.gymtrack.dto;
+package org.example.fitbeat.dto;
 
 public record UserResponse(
         Long id,

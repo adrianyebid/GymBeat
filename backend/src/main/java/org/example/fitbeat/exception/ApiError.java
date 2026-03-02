@@ -1,4 +1,4 @@
-package org.example.gymtrack.exception;
+package org.example.fitbeat.exception;
 
 import org.springframework.http.HttpStatus;
 

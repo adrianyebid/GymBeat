@@ -1,10 +1,10 @@
-package org.example.gymtrack.controller;
+package org.example.fitbeat.controller;
 
 import jakarta.validation.Valid;
-import org.example.gymtrack.dto.AuthResponse;
-import org.example.gymtrack.dto.LoginRequest;
-import org.example.gymtrack.dto.RegisterRequest;
-import org.example.gymtrack.service.AuthService;
+import org.example.fitbeat.dto.AuthResponse;
+import org.example.fitbeat.dto.LoginRequest;
+import org.example.fitbeat.dto.RegisterRequest;
+import org.example.fitbeat.service.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;

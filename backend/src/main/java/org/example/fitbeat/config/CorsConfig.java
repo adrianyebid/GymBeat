@@ -1,4 +1,4 @@
-package org.example.gymtrack.config;
+package org.example.fitbeat.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;

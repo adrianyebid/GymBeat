@@ -1,13 +1,13 @@
-package org.example.gymtrack.service;
+package org.example.fitbeat.service;
 
-import org.example.gymtrack.dto.AuthResponse;
-import org.example.gymtrack.dto.LoginRequest;
-import org.example.gymtrack.dto.RegisterRequest;
-import org.example.gymtrack.dto.UserResponse;
-import org.example.gymtrack.entity.User;
-import org.example.gymtrack.exception.BadRequestException;
-import org.example.gymtrack.exception.UnauthorizedException;
-import org.example.gymtrack.repository.UserRepository;
+import org.example.fitbeat.dto.AuthResponse;
+import org.example.fitbeat.dto.LoginRequest;
+import org.example.fitbeat.dto.RegisterRequest;
+import org.example.fitbeat.dto.UserResponse;
+import org.example.fitbeat.entity.User;
+import org.example.fitbeat.exception.BadRequestException;
+import org.example.fitbeat.exception.UnauthorizedException;
+import org.example.fitbeat.repository.UserRepository;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
