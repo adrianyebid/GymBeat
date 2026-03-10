@@ -14,7 +14,10 @@ import (
 	"github.com/adrianyebid/fitbeat/music-service/internal/repository"
 )
 
-const spotifySearchURL = "https://api.spotify.com/v1/search"
+const (
+	spotifySearchURL = "https://api.spotify.com/v1/search"
+	spotifyQueueURL  = "https://api.spotify.com/v1/me/player/queue"
+)
 
 var ErrSessionNotFound = fmt.Errorf("session not found")
 
@@ -23,14 +26,14 @@ type CreateSessionInput struct {
 	ActivityType string
 	Mode         string
 	Genres       []string // géneros musicales preferidos del usuario
-	Moods        []string // moods preferidos del usuario
+	Categories   []string // categorías preferidas del usuario
 	SpotifyToken string   // access token de Spotify para buscar tracks
 }
 
-// CreateSessionOutput contiene la sesión creada y los URIs de tracks encontrados en Spotify.
+// CreateSessionOutput contiene solo la sesión creada.
+// Los tracks ya fueron encolados directamente en Spotify.
 type CreateSessionOutput struct {
-	Session   model.TrainingSession `json:"session"`
-	TrackURIs []string              `json:"track_uris"`
+	Session model.TrainingSession `json:"session"`
 }
 
 // EngineService implementa la lógica de creación y consulta de sesiones de entrenamiento.
@@ -67,27 +70,56 @@ func (s *EngineService) CreateSession(input CreateSessionInput) (CreateSessionOu
 
 	for i := 0; i < 3; i++ {
 		genre := input.Genres[rand.Intn(len(input.Genres))]
-		mood := input.Moods[rand.Intn(len(input.Moods))]
+		category := input.Categories[rand.Intn(len(input.Categories))]
 
-		uris, err := s.searchSpotifyTrack(input.SpotifyToken, input.ActivityType, genre, mood)
+		uris, err := s.searchSpotifyTrack(input.SpotifyToken, input.ActivityType, genre, category)
 		if err != nil {
 			return CreateSessionOutput{}, err
 		}
 
-		allURIs = append(allURIs, uris...)
+			allURIs = append(allURIs, uris...)
 	}
 
-	return CreateSessionOutput{
-		Session:   session,
-		TrackURIs: allURIs,
-	}, nil
+	// Encolar cada track en el dispositivo activo del usuario vía Spotify Queue API
+	for _, uri := range allURIs {
+		if err := s.enqueueSpotifyTrack(input.SpotifyToken, uri); err != nil {
+			return CreateSessionOutput{}, err
+		}
+	}
+
+	return CreateSessionOutput{Session: session}, nil
 }
 
-// searchSpotifyTrack construye la query con deporte + género + mood y llama a la Spotify Search API.
+// enqueueSpotifyTrack agrega un track a la cola del dispositivo activo del usuario en Spotify.
+func (s *EngineService) enqueueSpotifyTrack(token, uri string) error {
+	params := url.Values{}
+	params.Set("uri", uri)
+
+	req, err := http.NewRequest(http.MethodPost, spotifyQueueURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build queue request")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach Spotify queue")
+	}
+	defer resp.Body.Close()
+
+	// Spotify devuelve 204 normalmente, pero acepta cualquier 2xx como éxito
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("spotify queue returned %d for uri %s", resp.StatusCode, uri)
+	}
+
+	return nil
+}
+
+// searchSpotifyTrack construye la query con deporte + género + categoría y llama a la Spotify Search API.
 // Devuelve hasta 3 URIs por búsqueda.
-func (s *EngineService) searchSpotifyTrack(token, activityType, genre, mood string) ([]string, error) {
-	// Query: "running pop happy" → Spotify busca tracks que coincidan con estos términos
-	query := fmt.Sprintf("%s %s %s", activityType, genre, mood)
+func (s *EngineService) searchSpotifyTrack(token, activityType, genre, category string) ([]string, error) {
+	// Query: "running pop workout" → Spotify busca tracks que coincidan con estos términos
+	query := fmt.Sprintf("%s %s %s", activityType, genre, category)
 
 	params := url.Values{}
 	params.Set("q", query)

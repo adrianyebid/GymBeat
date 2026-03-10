@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -19,8 +20,8 @@ type createSessionRequest struct {
 	UserID       string   `json:"user_id"`
 	ActivityType string   `json:"activity_type"` // ej: "running", "cycling"
 	Mode         string   `json:"mode"`          // ej: "automatic", "manual"
-	Genres       []string `json:"genres"`        // géneros musicales preferidos del usuario
-	Moods        []string `json:"moods"`         // moods preferidos del usuario
+	Genres     []string `json:"genres"`     // géneros musicales preferidos del usuario
+	Categories []string `json:"categories"` // categorías preferidas del usuario
 	SpotifyToken string   `json:"spotify_token"` // access token de Spotify del usuario
 }
 
@@ -52,8 +53,8 @@ func (h *TrainingHandler) CreateSession(c *gin.Context) {
 	if len(req.Genres) == 0 {
 		details = append(details, "genres is required and must not be empty")
 	}
-	if len(req.Moods) == 0 {
-		details = append(details, "moods is required and must not be empty")
+	if len(req.Categories) == 0 {
+		details = append(details, "categories is required and must not be empty")
 	}
 	if strings.TrimSpace(req.SpotifyToken) == "" {
 		details = append(details, "spotify_token is required")
@@ -69,18 +70,19 @@ func (h *TrainingHandler) CreateSession(c *gin.Context) {
 		ActivityType: req.ActivityType,
 		Mode:         req.Mode,
 		Genres:       req.Genres,
-		Moods:        req.Moods,
+		Categories:   req.Categories,
 		SpotifyToken: req.SpotifyToken,
 	})
 	if err != nil {
+		log.Printf("[CreateSession] error: %v", err)
 		c.JSON(http.StatusInternalServerError, errorResponse("failed to create session", nil))
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"data": gin.H{
-			"session": output.Session,
-			"tracks":  output.TrackURIs,
+			"session_id": output.Session.ID,
+			"message":    "session created and tracks queued",
 		},
 	})
 }
