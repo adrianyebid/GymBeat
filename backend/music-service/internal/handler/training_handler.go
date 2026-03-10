@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -20,12 +19,6 @@ type createSessionRequest struct {
 	UserID       string `json:"user_id"`
 	ActivityType string `json:"activity_type"` // ej: "running", "cycling"
 	Mode         string `json:"mode"`          // ej: "automatic", "manual"
-}
-
-// processBiometricRequest define los datos de una lectura biométrica enviada durante el entrenamiento.
-type processBiometricRequest struct {
-	SessionID string `json:"session_id"` // ID de la sesión activa
-	HeartRate int    `json:"heart_rate"` // BPM reportados por el dispositivo del usuario
 }
 
 func NewTrainingHandler(engineService *service.EngineService) *TrainingHandler {
@@ -70,47 +63,6 @@ func (h *TrainingHandler) CreateSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"data": session})
-}
-
-// ProcessBiometric recibe una lectura de frecuencia cardíaca y devuelve la canción recomendada.
-// El motor evalúa el BPM, determina la intensidad del ejercicio y selecciona el track más adecuado.
-// Devuelve 200 con un TrackDecision que contiene el track y el nivel de intensidad calculado.
-func (h *TrainingHandler) ProcessBiometric(c *gin.Context) {
-	var req processBiometricRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse("invalid JSON payload", nil))
-		return
-	}
-
-	details := make([]string, 0)
-	if strings.TrimSpace(req.SessionID) == "" {
-		details = append(details, "session_id is required")
-	}
-	// Un heart_rate de 0 o negativo no es fisiológicamente válido
-	if req.HeartRate <= 0 {
-		details = append(details, "heart_rate must be greater than 0")
-	}
-
-	if len(details) > 0 {
-		c.JSON(http.StatusBadRequest, errorResponse("validation failed", details))
-		return
-	}
-
-	decision, err := h.engineService.ProcessBiometric(service.ProcessBiometricInput{
-		SessionID: req.SessionID,
-		HeartRate: req.HeartRate,
-	})
-	if err != nil {
-		// Diferenciar sesión no encontrada (404) de errores internos (500)
-		if errors.Is(err, service.ErrSessionNotFound) {
-			c.JSON(http.StatusNotFound, errorResponse("session not found", []string{"session_id does not exist"}))
-			return
-		}
-		c.JSON(http.StatusInternalServerError, errorResponse("failed to process biometric data", nil))
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": decision})
 }
 
 // errorResponse construye el formato de error estándar de la API.
