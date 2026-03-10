@@ -11,19 +11,15 @@ import (
 func RegisterRoutes(r *gin.Engine, engineService *service.EngineService) {
 	v1 := r.Group("/api/v1")
 	trainingHandler := NewTrainingHandler(engineService)
-	playerHandler := NewPlayerHandler()
+	wsHandler := NewWSHandler()
 	{
 		v1.GET("/health", HealthCheck)
 		v1.POST("/sessions", trainingHandler.CreateSession)
 		v1.POST("/biometrics", trainingHandler.ProcessBiometric)
 
-		player := v1.Group("/player")
-		{
-			player.PUT("/play", playerHandler.Play)
-			player.PUT("/pause", playerHandler.Pause)
-			player.POST("/next", playerHandler.Next)
-			player.POST("/previous", playerHandler.Previous)
-		}
+		// WebSocket — canal persistente para el control del reproductor durante la sesión.
+		// Conexión: ws://localhost:8081/api/v1/ws?token=<spotify_token>
+		v1.GET("/ws", wsHandler.HandleSession)
 	}
 }
 
