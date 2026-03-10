@@ -5,20 +5,21 @@
 
 services:
 
-  # ─────────────── Base de Datos Relacional ───────────────
+  # ─────────────── Base de Datos Relacional (CA) ───────────────
   postgres_db:
     image: postgres:15-alpine
     container_name: component_a_db
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-component_a}
+      
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "5433:5432" 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - [cite_start]postgres_data:/var/lib/postgresql/data 
     networks:
       - component_a_network
     restart: always
@@ -27,6 +28,7 @@ services:
   component_a:
     build: .
     container_name: component_a_api
+ 
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
@@ -35,9 +37,16 @@ services:
     env_file:
       - .env
     environment:
-      # Sobreescribe DATABASE_URL para apuntar al servicio postgres_db
-      # dentro de la red interna de Docker (no localhost)
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres_db:5432/${POSTGRES_DB:-component_a}
+      # Conexión interna: Usa el nombre del servicio 'postgres_db' y el puerto 5432 
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+      
+      # Inyección de variables críticas del .env [cite: 35]
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+      REDIRECT_URI: ${REDIRECT_URI}
+      
+      # Llave para mitigar CWE-312 (Cifrado de tokens en reposo) 
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     depends_on:
       - postgres_db
     networks:
