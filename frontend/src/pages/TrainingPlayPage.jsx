@@ -40,13 +40,13 @@ function TrainingPlayPage() {
 
   const trainingIcons = useMemo(
     () => ({
-      running: "RUN",
-      lifting: "LFT",
-      hiking: "HKG",
-      crossfit: "CFT",
-      hitt: "HIIT",
-      cycling: "CYC",
-      mindfulness: "ZEN"
+      running: "🏃",
+      lifting: "🏋️",
+      hiking: "🥾",
+      crossfit: "💪",
+      hitt: "⚡",
+      cycling: "🚴",
+      mindfulness: "🧘"
     }),
     []
   );
@@ -57,8 +57,8 @@ function TrainingPlayPage() {
         artist: trainingSession.latestDecision.track.artist
       }
     : {
-        name: "Esperando recomendacion",
-        artist: "Motor de musica"
+        name: "Esperando recomendación",
+        artist: "Motor de música"
       };
 
   useEffect(() => {
@@ -83,7 +83,7 @@ function TrainingPlayPage() {
 
         const createdId = response?.data?.id;
         if (!createdId) {
-          throw new Error("No session id returned by engine");
+          throw new Error("No se recibió session_id del motor");
         }
 
         if (isMounted) {
@@ -91,7 +91,7 @@ function TrainingPlayPage() {
         }
       } catch (err) {
         if (isMounted) {
-          setError(err?.message || "No se pudo crear la sesion en el motor.");
+          setError(err?.message || "No se pudo crear la sesión en el motor.");
         }
       }
     }
@@ -153,7 +153,7 @@ function TrainingPlayPage() {
 
   const handleTogglePlay = () => {
     if (!trainingSession.engineSessionId) {
-      setError("Aun no existe sesion activa en el motor.");
+      setError("Aún no existe sesión activa en el motor.");
       return;
     }
     setIsPlaying((prev) => !prev);
@@ -167,7 +167,7 @@ function TrainingPlayPage() {
       clearTrainingSession();
       navigate("/dashboard");
     } catch {
-      setError("Error al finalizar sesion.");
+      setError("Error al finalizar sesión.");
       setIsLoading(false);
     }
   };
@@ -198,22 +198,22 @@ function TrainingPlayPage() {
           className="ghost-btn back-btn"
           onClick={handleBackToTraining}
         >
-          Atras
+          ← Atrás
         </button>
         <button type="button" className="ghost-btn" onClick={logout}>
-          Cerrar sesion
+          Cerrar sesión
         </button>
       </header>
 
       <section className="training-play-content">
         <div className="training-type-display">
-          <div className="training-type-icon">{trainingIcons[trainingType] || "TRN"}</div>
+          <div className="training-type-icon">{trainingIcons[trainingType] || "🏋️"}</div>
           <h1>{trainingNames[trainingType] || "Entrenamiento"}</h1>
         </div>
 
         <div className="timer-container">
           <div className="timer-display">{formatTime(elapsedTime)}</div>
-          <p className="timer-label">Duracion</p>
+          <p className="timer-label">Duración</p>
         </div>
 
         <div className="music-player">
@@ -239,7 +239,7 @@ function TrainingPlayPage() {
               title="Anterior"
               disabled
             >
-              Prev
+              ⏮
             </button>
             <button
               type="button"
@@ -247,7 +247,7 @@ function TrainingPlayPage() {
               onClick={handleTogglePlay}
               title={isPlaying ? "Pausar" : "Reproducir"}
             >
-              {isPlaying ? "Pause" : "Play"}
+              {isPlaying ? "⏸" : "▶"}
             </button>
             <button
               type="button"
@@ -255,12 +255,12 @@ function TrainingPlayPage() {
               title="Siguiente"
               disabled
             >
-              Next
+              ⏭
             </button>
           </div>
 
           <div className="player-playlist">
-            <h3>Sesion del motor</h3>
+            <h3>Sesión del motor</h3>
             <p className="empty-playlist">
               Session ID: {trainingSession.engineSessionId || "pendiente"}
             </p>
@@ -282,7 +282,7 @@ function TrainingPlayPage() {
           onClick={handleFinishSession}
           disabled={isLoading}
         >
-          {isLoading ? "Guardando..." : "Finalizar sesion"}
+          {isLoading ? "Guardando..." : "Finalizar sesión"}
         </button>
       </section>
     </main>
