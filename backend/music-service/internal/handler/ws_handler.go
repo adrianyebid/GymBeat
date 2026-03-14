@@ -37,7 +37,15 @@ var upgrader = websocket.Upgrader{
 
 // wsInMessage es la estructura que el frontend debe enviar por el WebSocket.
 type wsInMessage struct {
-	Action string `json:"action"` // play | pause | next | previous
+	Action string `json:"action"`          // play | pause | next | previous | update_token
+	Token  string `json:"token,omitempty"` // solo requerido para la acción update_token
+}
+
+// sessionState guarda el estado mutable de una conexión WebSocket activa.
+// authHeader se puede actualizar en caliente cuando el frontend refresca el token,
+// sin necesidad de cerrar y reabrir la conexión.
+type sessionState struct {
+	authHeader string // "Bearer <spotify_access_token>" actualizable via update_token
 }
 
 // wsOutMessage representa la respuesta del backend al frontend.
@@ -88,9 +96,10 @@ func (h *WSHandler) HandleSession(c *gin.Context) {
 	// sin importar si fue por error, cierre del cliente o fin normal.
 	defer conn.Close()
 
-	// Construir el header Authorization una sola vez para reutilizarlo en cada llamada a Spotify.
-	// Formato requerido por la Spotify Web API: "Bearer <token>"
-	authHeader := "Bearer " + token
+	// sessionState encapsula el authHeader como estado mutable de esta conexión.
+	// Cuando el token expira, el frontend puede enviar update_token y el backend
+	// actualiza state.authHeader sin cerrar la conexión WebSocket.
+	state := &sessionState{authHeader: "Bearer " + token}
 
 	// Bucle principal de la sesión.
 	// Se ejecuta indefinidamente hasta que el cliente cierra la conexión o hay un error de red.
@@ -114,34 +123,51 @@ func (h *WSHandler) HandleSession(c *gin.Context) {
 			continue
 		}
 
-		// Ejecutar la acción y responder al cliente
-		// dispatch retorna error solo para errores de lógica (acción inválida, uri faltante)
-		// Los errores de Spotify se manejan dentro de callSpotify
-		if err := h.dispatch(conn, msg, authHeader); err != nil {
+		// Ejecutar la acción y responder al cliente.
+		// dispatch retorna error solo para errores de validación (acción desconocida, token vacío).
+		// Los errores de Spotify (incluido 401) se escriben directamente al WS desde callSpotify.
+		if err := h.dispatch(conn, msg, state); err != nil {
 			h.writeOut(conn, wsOutMessage{Event: "error", Action: msg.Action, Message: err.Error()})
 		}
 	}
 }
 
 // dispatch actúa como un router interno: mapea cada acción a su endpoint de Spotify.
-func (h *WSHandler) dispatch(conn *websocket.Conn, msg wsInMessage, authHeader string) error {
+// Recibe *sessionState para poder mutar authHeader cuando llega update_token.
+func (h *WSHandler) dispatch(conn *websocket.Conn, msg wsInMessage, state *sessionState) error {
 	switch msg.Action {
+	case "update_token":
+		// El frontend envía un nuevo token cuando el anterior expiró (vida útil: 1 hora).
+		// El backend actualiza authHeader en memoria — la conexión WS sigue abierta.
+		// Flujo esperado:
+		//   1. Backend detecta 401 → envía { event: "token_expired", action: "..." }
+		//   2. Frontend refresca el token con Spotify
+		//   3. Frontend envía { action: "update_token", token: "nuevo_BQD..." }
+		//   4. Frontend reintenta la acción original
+		newToken := strings.TrimSpace(msg.Token)
+		if newToken == "" {
+			return fmt.Errorf("token is required for update_token action")
+		}
+		state.authHeader = "Bearer " + newToken
+		h.writeOut(conn, wsOutMessage{Event: "ok", Action: "update_token"})
+		return nil
+
 	case "play":
 		// PUT /me/player/play sin body → reanuda la reproducción de la cola existente.
 		// Las canciones ya fueron encoladas por POST /api/v1/sessions antes de conectar el WS.
-		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/play", authHeader, nil)
+		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/play", state.authHeader, nil)
 
 	case "pause":
 		// PUT /me/player/pause — no necesita body ni URI
-		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/pause", authHeader, nil)
+		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/pause", state.authHeader, nil)
 
 	case "next":
 		// POST /me/player/next — avanza al siguiente track en la cola de Spotify
-		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/next", authHeader, nil)
+		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/next", state.authHeader, nil)
 
 	case "previous":
 		// POST /me/player/previous — vuelve al track anterior
-		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/previous", authHeader, nil)
+		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/previous", state.authHeader, nil)
 
 	default:
 		return fmt.Errorf("unknown action: %s", msg.Action)
@@ -200,9 +226,19 @@ func (h *WSHandler) callSpotify(conn *websocket.Conn, action, method, url, authH
 		return nil
 	}
 
-	// Cualquier status fuera del rango 2xx es un error de Spotify (401, 403, 404, etc.)
-	// Intentar leer el body del error para logging futuro, pero no lo usamos en la respuesta
-	// para no exponer detalles internos de Spotify al frontend.
+	// 401 Unauthorized = el token de Spotify expiró.
+	// En lugar de retornar un error genérico, notificamos al frontend con el evento
+	// "token_expired" para que pueda refrescar el token y enviarlo via update_token.
+	if resp.StatusCode == http.StatusUnauthorized {
+		h.writeOut(conn, wsOutMessage{
+			Event:   "token_expired",
+			Action:  action,
+			Message: "send update_token with a new spotify access token",
+		})
+		return nil
+	}
+
+	// Cualquier otro status fuera del rango 2xx es un error de Spotify (403, 404, etc.)
 	var spotifyErr any
 	json.NewDecoder(resp.Body).Decode(&spotifyErr)
 	return fmt.Errorf("spotify returned %d", resp.StatusCode)
