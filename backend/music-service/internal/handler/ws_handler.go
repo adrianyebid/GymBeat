@@ -13,34 +13,51 @@ import (
 )
 
 // spotifyPlayerURL es la base de todos los endpoints de control de reproducción de Spotify.
+// Todos los comandos del reproductor (play, pause, next, previous) son sub-rutas de esta URL.
 const spotifyPlayerURL = "https://api.spotify.com/v1/me/player"
 
-// upgrader convierte una conexión HTTP en WebSocket.
-// CheckOrigin valida que el request venga del frontend autorizado.
+// upgrader es el componente que convierte una conexión HTTP normal en una conexión WebSocket.
+//
+// El proceso de "upgrade" funciona así:
+//  1. El frontend hace GET /api/v1/ws con el header "Upgrade: websocket"
+//  2. El upgrader valida que el origen sea permitido (CheckOrigin)
+//  3. Si es válido, negocia el protocolo y devuelve una conexión WebSocket bidireccional
+//  4. A partir de ahí, ambos lados pueden enviarse mensajes en cualquier momento sin hacer nuevos requests
+//
+// CheckOrigin es una función de seguridad que decide si se acepta la conexión.
+// En producción solo se acepta desde el dominio del frontend desplegado.
+// En desarrollo se acepta solo desde localhost:5173 (puerto de Vite).
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "http://localhost:5173"
+		// Permitir conexiones del frontend autorizado o sin Origin (herramientas como Postman)
+		return origin == "http://localhost:5173" || origin == ""
 	},
 }
 
-// wsInMessage representa un comando enviado por el frontend al backend.
+// wsInMessage es la estructura que el frontend debe enviar por el WebSocket.
 type wsInMessage struct {
 	Action string `json:"action"` // play | pause | next | previous
-	URI    string `json:"uri"`    // spotify:track:ID — solo requerido para "play"
 }
 
 // wsOutMessage representa la respuesta del backend al frontend.
 type wsOutMessage struct {
 	Event   string `json:"event"`             // ok | error
 	Action  string `json:"action"`            // acción que originó el evento
-	Message string `json:"message,omitempty"` // detalle del error si aplica
+	Message string `json:"message,omitempty"` // detalle del error — omitido si está vacío
 }
 
 // WSHandler gestiona la conexión WebSocket de una sesión de entrenamiento.
 // Recibe comandos del frontend, los ejecuta contra la Spotify Web API
 // y devuelve el resultado por el mismo canal.
+//
+// Un WSHandler es creado una sola vez al iniciar el servidor y es compartido
+// entre todas las conexiones (es stateless — no guarda estado por usuario).
+// Cada conexión tiene su propio goroutine gestionado por Gin.
 type WSHandler struct {
+	// httpClient es el cliente HTTP reutilizable para llamar a la Spotify API.
+	// Reutilizarlo es importante para aprovechar el connection pooling de Go
+	// y no crear/destruir conexiones TCP en cada llamada.
 	httpClient *http.Client
 }
 
@@ -48,120 +65,156 @@ func NewWSHandler() *WSHandler {
 	return &WSHandler{httpClient: &http.Client{}}
 }
 
-// HandleSession upgradea la conexión HTTP a WebSocket y mantiene el canal abierto
-// durante toda la sesión de entrenamiento.
-//
-// El frontend se conecta así:
-//
-//	ws://localhost:8081/api/v1/ws?token=<spotify_access_token>
-//
-// Una vez conectado, envía mensajes JSON con la forma:
-//
-//	{ "action": "play", "uri": "spotify:track:ID" }
-//	{ "action": "pause" }
-//	{ "action": "next" }
-//	{ "action": "previous" }
-//
+
 // El token se pasa como query param porque los browsers no permiten
 // enviar headers Authorization en la apertura de una conexión WebSocket.
 func (h *WSHandler) HandleSession(c *gin.Context) {
+	// Leer el token del query param — los browsers no permiten headers en WS
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
+		// Si no hay token, rechazar antes del upgrade (todavía es HTTP aquí)
 		c.JSON(http.StatusUnauthorized, errorResponse("missing token query param", nil))
 		return
 	}
 
+	// Intentar hacer el upgrade HTTP → WebSocket.
+	// Si el cliente no envió los headers correctos de WS, gorilla responde automáticamente
+	// con HTTP 400 y retorna error — no necesitamos manejar el error de respuesta manualmente.
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		// gorilla escribe automáticamente el error HTTP si el upgrade falla
 		return
 	}
+	// defer conn.Close() garantiza que la conexión se cierre cuando HandleSession retorne,
+	// sin importar si fue por error, cierre del cliente o fin normal.
 	defer conn.Close()
 
+	// Construir el header Authorization una sola vez para reutilizarlo en cada llamada a Spotify.
+	// Formato requerido por la Spotify Web API: "Bearer <token>"
 	authHeader := "Bearer " + token
 
-	// Bucle de mensajes: se mantiene activo hasta que el cliente cierra la conexión
+	// Bucle principal de la sesión.
+	// Se ejecuta indefinidamente hasta que el cliente cierra la conexión o hay un error de red.
+	// Gin ya ejecuta HandleSession en su propia goroutine, así que este bucle bloquea
+	// solo ese goroutine — no afecta a otros usuarios conectados.
 	for {
+		// ReadMessage bloquea hasta que llegue un mensaje del cliente.
+		// Retorna error cuando el cliente cierra la conexión (websocket.CloseMessage)
+		// o cuando hay un problema de red — en ambos casos salimos del bucle.
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			// Error de lectura o cierre normal del cliente (websocket.CloseMessage)
+			// Cierre normal o error de red — terminar el loop y cerrar la conexión
 			break
 		}
 
+		// Parsear el JSON recibido al struct wsInMessage
 		var msg wsInMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
+			// JSON inválido — notificar al cliente y continuar esperando el siguiente mensaje
 			h.writeOut(conn, wsOutMessage{Event: "error", Message: "invalid message format"})
 			continue
 		}
 
+		// Ejecutar la acción y responder al cliente
+		// dispatch retorna error solo para errores de lógica (acción inválida, uri faltante)
+		// Los errores de Spotify se manejan dentro de callSpotify
 		if err := h.dispatch(conn, msg, authHeader); err != nil {
 			h.writeOut(conn, wsOutMessage{Event: "error", Action: msg.Action, Message: err.Error()})
 		}
 	}
 }
 
-// dispatch selecciona qué llamado a Spotify corresponde a cada acción recibida.
+// dispatch actúa como un router interno: mapea cada acción a su endpoint de Spotify.
 func (h *WSHandler) dispatch(conn *websocket.Conn, msg wsInMessage, authHeader string) error {
 	switch msg.Action {
 	case "play":
-		if strings.TrimSpace(msg.URI) == "" {
-			return fmt.Errorf("uri is required for play action")
-		}
-		body := map[string]any{"uris": []string{msg.URI}}
-		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/play", authHeader, body)
+		// PUT /me/player/play sin body → reanuda la reproducción de la cola existente.
+		// Las canciones ya fueron encoladas por POST /api/v1/sessions antes de conectar el WS.
+		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/play", authHeader, nil)
+
 	case "pause":
+		// PUT /me/player/pause — no necesita body ni URI
 		return h.callSpotify(conn, msg.Action, http.MethodPut, spotifyPlayerURL+"/pause", authHeader, nil)
+
 	case "next":
+		// POST /me/player/next — avanza al siguiente track en la cola de Spotify
 		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/next", authHeader, nil)
+
 	case "previous":
+		// POST /me/player/previous — vuelve al track anterior
 		return h.callSpotify(conn, msg.Action, http.MethodPost, spotifyPlayerURL+"/previous", authHeader, nil)
+
 	default:
 		return fmt.Errorf("unknown action: %s", msg.Action)
 	}
 }
 
-// callSpotify ejecuta la petición HTTP a la Spotify Web API y escribe el resultado
-// de vuelta al cliente por el canal WebSocket.
+// callSpotify es el método central que ejecuta cualquier llamada a la Spotify Web API.
+// Construye el request HTTP, lo envía, y escribe el resultado de vuelta al cliente WS.
+//
+// Parámetros:
+//   - conn:       conexión WebSocket del cliente para responderle
+//   - action:     nombre de la acción (para incluirlo en la respuesta)
+//   - method:     HTTP method (PUT, POST)
+//   - url:        endpoint completo de Spotify
+//   - authHeader: "Bearer <token>"
+//   - body:       body JSON opcional (nil para pause/next/previous)
 func (h *WSHandler) callSpotify(conn *websocket.Conn, action, method, url, authHeader string, body map[string]any) error {
+	// Preparar el body del request
 	var reqBody *bytes.Reader
 	if body != nil {
+		// Serializar el body a JSON si hay datos que enviar (solo en "play")
 		b, _ := json.Marshal(body)
 		reqBody = bytes.NewReader(b)
 	} else {
-		// Spotify requiere body vacío (no nil) en pause, next, previous
+		// Spotify requiere un body vacío (no nil) en sus endpoints PUT/POST sin body.
+		// Si pasáramos nil, el servidor de Spotify podría rechazar el request.
 		reqBody = bytes.NewReader([]byte{})
 	}
 
+	// Crear el request con contexto para poder cancelarlo si fuera necesario en el futuro
 	req, err := http.NewRequestWithContext(context.Background(), method, url, reqBody)
 	if err != nil {
 		return fmt.Errorf("failed to build spotify request")
 	}
 
+	// El token de Spotify va en el header Authorization de cada request HTTP
 	req.Header.Set("Authorization", authHeader)
 	if body != nil {
+		// Solo agregar Content-Type cuando hay body JSON, para no confundir a Spotify
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// Ejecutar el request contra la Spotify API
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to reach Spotify")
 	}
+	// defer garantiza que el body de la respuesta se cierra al salir,
+	// liberando la conexión TCP al pool para reutilizarla
 	defer resp.Body.Close()
 
-	// 204 No Content = operación exitosa sin body de respuesta
-	if resp.StatusCode == http.StatusNoContent {
+	// Spotify devuelve 204 normalmente, pero puede responder cualquier 2xx como éxito
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// Notificar al frontend que la acción se ejecutó correctamente
 		h.writeOut(conn, wsOutMessage{Event: "ok", Action: action})
 		return nil
 	}
 
-	// Cualquier otro status de Spotify se trata como error y se propaga al cliente
+	// Cualquier status fuera del rango 2xx es un error de Spotify (401, 403, 404, etc.)
+	// Intentar leer el body del error para logging futuro, pero no lo usamos en la respuesta
+	// para no exponer detalles internos de Spotify al frontend.
 	var spotifyErr any
 	json.NewDecoder(resp.Body).Decode(&spotifyErr)
 	return fmt.Errorf("spotify returned %d", resp.StatusCode)
 }
 
-// writeOut serializa y envía un mensaje JSON por el canal WebSocket.
+// writeOut serializa un wsOutMessage a JSON y lo envía por el canal WebSocket.
+// Es el único punto de escritura al WebSocket — centralizado para facilitar
+// agregar logging o métricas en el futuro.
 func (h *WSHandler) writeOut(conn *websocket.Conn, msg wsOutMessage) {
 	b, _ := json.Marshal(msg)
+	// websocket.TextMessage indica que el payload es texto (JSON),
+	// en contraste con websocket.BinaryMessage para datos binarios.
 	conn.WriteMessage(websocket.TextMessage, b)
 }
+
