@@ -1,13 +1,10 @@
 package repository
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/adrianyebid/fitbeat/music-service/internal/model"
 )
-
-var ErrSessionNotFound = errors.New("session not found")
 
 // InMemoryRepository implementa EngineRepository usando almacenamiento en memoria.
 type InMemoryRepository struct {
@@ -27,17 +24,4 @@ func (r *InMemoryRepository) SaveSession(session model.TrainingSession) error {
 
 	r.sessions[session.ID] = session
 	return nil
-}
-
-func (r *InMemoryRepository) FindSessionByID(id string) (*model.TrainingSession, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	session, ok := r.sessions[id]
-	if !ok {
-		return nil, ErrSessionNotFound
-	}
-
-	copy := session
-	return &copy, nil
 }

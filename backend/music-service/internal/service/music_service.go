@@ -20,8 +20,6 @@ const (
 	spotifyQueueURL  = "https://api.spotify.com/v1/me/player/queue"
 )
 
-var ErrSessionNotFound = fmt.Errorf("session not found")
-
 type CreateSessionInput struct {
 	UserID       string
 	ActivityType string

@@ -26,6 +26,6 @@ func RegisterRoutes(r *gin.Engine, engineService *service.EngineService) {
 func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
-		"service": "music-biometric-engine",
+		"service": "music-service",
 	})
 }
