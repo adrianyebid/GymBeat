@@ -31,7 +31,8 @@ func NewTrainingHandler(engineService *service.EngineService) *TrainingHandler {
 
 // CreateSession inicia una nueva sesión de entrenamiento para el usuario.
 // Valida todos los campos requeridos antes de delegar al service.
-// Devuelve 201 con la sesión creada, incluyendo su ID para usarlo en /biometrics.
+// Devuelve 201 con la sesión creada, incluyendo su ID para usarlo en el flujo actual
+// (por ejemplo, mediante el WS /api/v1/ws o el nuevo contrato de sesión).
 func (h *TrainingHandler) CreateSession(c *gin.Context) {
 	var req createSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
