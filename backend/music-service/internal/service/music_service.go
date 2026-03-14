@@ -203,7 +203,7 @@ func (s *EngineService) enqueueSpotifyTrack(token, uri string) error {
 }
 
 // searchSpotifyTrack construye la query con deporte + género + categoría y llama a la Spotify Search API.
-// Devuelve hasta 3 URIs por búsqueda.
+// Devuelve hasta 5 URIs por búsqueda.
 func (s *EngineService) searchSpotifyTrack(token, activityType, genre, category string) ([]string, error) {
 	// Query: "running pop workout" → Spotify busca tracks que coincidan con estos términos
 	query := fmt.Sprintf("%s %s %s", activityType, genre, category)
