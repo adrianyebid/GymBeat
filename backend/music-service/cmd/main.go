@@ -22,7 +22,10 @@ func main() {
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		MaxAge:           12 * time.Hour,
 	}))
-	engineRepository := repository.NewInMemoryRepository()
+	engineRepository, err := repository.NewCouchDBRepository(cfg.CouchDBAddr)
+	if err != nil {
+		log.Fatalf("Failed to connect to CouchDB (%s): %v", cfg.CouchDBAddr, err)
+	}
 	engineService := service.NewEngineService(engineRepository)
 
 	handler.RegisterRoutes(r, engineService)
